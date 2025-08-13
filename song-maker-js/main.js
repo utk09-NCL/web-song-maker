@@ -1,5 +1,5 @@
 const ROWS = 8; // total number of horizontal pitches (notes)
-const COLS = 60; // total number of vertical time steps (beats)
+const COLS = 16; // total number of vertical time steps (beats)
 
 /**
  * Names for each row / note names.
@@ -224,6 +224,68 @@ function main() {
       rulerCell.classList.toggle("playing-col", on);
     }
   }
+
+  function playbackStep() {
+    if (!isPlaying || !audioContext) return;
+    const now = audioContext.currentTime;
+
+    const gridState = gridRefs.gridState;
+
+    for (let r = 0; r < ROWS; r++) {
+      if (gridState[r][currentColumn]) {
+        playNoteAt(r, now);
+      }
+    }
+
+    highlightColumn(currentColumn, true);
+    const prevColumn = (currentColumn - 1 + COLS) % COLS;
+    highlightColumn(prevColumn, false);
+
+    currentColumn = (currentColumn + 1) % COLS;
+    timerId = setTimeout(playbackStep, getColumnDurationMs());
+  }
+
+  function setControlsDisabled(disabled) {
+    [tempoInput, clearButton, randomiseButton, waveSelect].forEach((eachEl) => {
+      if (eachEl) {
+        eachEl.disabled = disabled;
+      }
+    });
+  }
+
+  function startPlayback() {
+    ensureAudioContext();
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+    if (isPlaying) return;
+
+    isPlaying = true;
+    playButton.textContent = "Stop";
+    setControlsDisabled(true);
+    currentColumn = 0;
+    playbackStep();
+  }
+
+  function stopPlayback() {
+    if (!isPlaying) return;
+
+    isPlaying = false;
+    playButton.textContent = "Play";
+    clearTimeout(timerId); // stop the loop of playing
+    for (let c = 0; c < COLS; c++) {
+      highlightColumn(c, false);
+    }
+    setControlsDisabled(false);
+  }
+
+  playButton.addEventListener("click", () => {
+    if (isPlaying) {
+      stopPlayback();
+    } else {
+      startPlayback();
+    }
+  });
 }
 
 main(); // Call the main function to run, when the script is loaded
