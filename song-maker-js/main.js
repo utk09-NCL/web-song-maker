@@ -1,5 +1,5 @@
 const ROWS = 8; // total number of horizontal pitches (notes)
-const COLS = 16; // total number of vertical time steps (beats)
+const COLS = 60; // total number of vertical time steps (beats)
 
 /**
  * Names for each row / note names.
@@ -79,6 +79,7 @@ function renderGrid(container) {
    * 2D array for storing active notes. 'false' means inactive.
    * Each cell corresponds to a note at a specific time step.
    * The gridState is initialized with 'false' for all cells.
+   * @type boolean[][]
    * @example
    * const gridState = [
    *   [false, false, false, ...], // Row 0 (C3) with 16 columns (see ROWS and COLS constants)
@@ -114,7 +115,6 @@ function renderGrid(container) {
   for (let eachRow = 0; eachRow < ROWS; eachRow++) {
     for (let eachCol = 0; eachCol < COLS; eachCol++) {
       const cell = el("button", "cell");
-      gridInner.appendChild(cell); // Append the cell to the inner grid
 
       /**
        * Add click event listener to each cell.
@@ -124,20 +124,106 @@ function renderGrid(container) {
       cell.addEventListener("click", () =>
         toggleCellState(eachRow, eachCol, cell)
       );
+
+      gridInner.appendChild(cell); // Append the cell to the inner grid
     }
   }
 
   gridRightSide.appendChild(gridInner); // Add the inner grid to the right side of the grid
   gridLayout.appendChild(gridRightSide); // Add the right side to the grid layout
   container.appendChild(gridLayout); // Finally, append the entire grid layout to the container
+
+  return {
+    gridState,
+    gridInner,
+    ruler,
+  };
 }
 
 /**
  * Main entry point: renders the grid into the #grid element.
  */
 function main() {
-  const grid = document.getElementById("grid");
-  renderGrid(grid);
+  const gridContainer = document.getElementById("grid");
+  if (!gridContainer) {
+    console.error("grid element missing");
+    return;
+  }
+  const gridRefs = renderGrid(gridContainer); // Build the grid UI
+
+  // Access to Controls
+  const playButton = document.getElementById("play");
+  const tempoInput = document.getElementById("tempo");
+  const waveSelect = document.getElementById("waveSelect");
+  const clearButton = document.getElementById("clearBtn");
+  const randomiseButton = document.getElementById("randomBtn");
+
+  // Playback state management
+  let audioContext = null;
+  let isPlaying = false;
+  let currentColumn = 0;
+  let timerId = null;
+  const baseFrequency = 65.41; // frequency of C2
+
+  function ensureAudioContext() {
+    if (!audioContext) {
+      audioContext = new window.AudioContext(); // TODO: add window.webkitAudioContext. See: https://github.com/mdn/webaudio-examples/blob/main/violent-theremin/scripts/app.js#L18
+    }
+  }
+
+  // Calculate how long we will wait before moving to next column
+  function getColumnDurationMs() {
+    const bpm = parseInt(tempoInput?.value) || 120;
+    return 60_000 / bpm / 4; // 60_000 -> 60 seconds * 1000 milliseconds, bpm -> user input of tempo, 4 -> 4 columns per beat
+  }
+
+  function getFrequencyForRow(row) {
+    const semitoneSteps = [0, 2, 4, 5, 7, 9, 11, 12]; // smallest step difference between pitches in Western music
+    const step = semitoneSteps[row] || 0;
+    return baseFrequency * Math.pow(2, step / 12);
+  }
+
+  function playNoteAt(row, time) {
+    const frequency = getFrequencyForRow(row);
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    const waveForm = waveSelect?.value || "sine";
+    oscillator.type = waveForm;
+
+    oscillator.frequency.value = frequency;
+    gainNode.gain.value = 0.001; // 0.1% volume
+    oscillator.connect(gainNode).connect(audioContext.destination);
+
+    gainNode.gain.setValueAtTime(0.001, time);
+    gainNode.gain.linearRampToValueAtTime(0.2, time + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+
+    oscillator.start(time);
+    oscillator.stop(time + 0.3);
+  }
+
+  function highlightColumn(col, on) {
+    const gridInner = gridRefs.gridInner;
+    const ruler = gridRefs.ruler;
+    if (!gridInner || !ruler) {
+      console.error("grid or ruler reference missing");
+      return;
+    }
+
+    for (let r = 0; r < ROWS; r++) {
+      const cellIndex = r * COLS + col;
+      const cell = gridInner.children[cellIndex];
+      if (cell) {
+        cell.classList.toggle("playing-col", on);
+      }
+    }
+
+    const rulerCell = ruler.children[col];
+    if (rulerCell) {
+      rulerCell.classList.toggle("playing-col", on);
+    }
+  }
 }
 
 main(); // Call the main function to run, when the script is loaded
