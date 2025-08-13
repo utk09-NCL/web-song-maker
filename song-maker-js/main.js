@@ -1,12 +1,22 @@
-const ROWS = 8; // total number of horizontal pitches (notes)
-const COLS = 16; // total number of vertical time steps (beats)
+const ROWS = parseInt(window.sessionStorage.getItem("songMaker_ROWS")) || 8; // total number of horizontal pitches (notes)
+const COLS = parseInt(window.sessionStorage.getItem("songMaker_COLS")) || 16; // total number of vertical time steps (beats)
+
+window.sessionStorage.setItem("songMaker_ROWS", ROWS);
+window.sessionStorage.setItem("songMaker_COLS", COLS);
 
 /**
  * Names for each row / note names.
  * Numbers 3 and 2 refer to octaves. It is arranged in the order of highest note first.
  * More info: {@link https://www.musicandtheory.com/an-easy-guide-to-scientific-pitch-notation/}
  */
-const NOTE_NAMES = ["C3", "B2", "A2", "G2", "F2", "E2", "D2", "C2"]; // TODO: ADD MORE NOTES AND OCTAVES, MAKE IT DYNAMIC DEPENDING ON ROWS
+const NOTE_NAMES = JSON.parse(
+  window.sessionStorage.getItem("songMaker_NOTE_NAMES")
+) || ["C3", "B2", "A2", "G2", "F2", "E2", "D2", "C2"];
+
+window.sessionStorage.setItem(
+  "songMaker_NOTE_NAMES",
+  JSON.stringify(NOTE_NAMES)
+);
 
 /**
  * Create an HTML element with provided class and id
