@@ -147,7 +147,7 @@ body {
 }
 
 .ruler-cell.playing-col {
-  outline: 2px solid #67ffe6;
+  background-color: #faffc8;
 }
 
 /* Bottom Grid Inner */
@@ -178,5 +178,5 @@ body {
 }
 
 .cell.playing-col {
-  outline: 2px solid #f6ffa5;
+  outline: 1px solid #f6ffa5;
 }

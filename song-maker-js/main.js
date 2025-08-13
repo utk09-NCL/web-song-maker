@@ -246,7 +246,7 @@ function main() {
   }
 
   function setControlsDisabled(disabled) {
-    [tempoInput, clearButton, randomiseButton, waveSelect].forEach((eachEl) => {
+    [clearButton, randomiseButton].forEach((eachEl) => {
       if (eachEl) {
         eachEl.disabled = disabled;
       }
@@ -286,6 +286,45 @@ function main() {
       startPlayback();
     }
   });
+
+  tempoInput.addEventListener("change", () => {
+    if (isPlaying) {
+      clearTimeout(timerId);
+      playbackStep();
+    }
+  });
+
+  clearButton.addEventListener("click", () => {
+    const gridState = gridRefs.gridState;
+    const gridInner = gridRefs.gridInner;
+    for (let eachRow = 0; eachRow < ROWS; eachRow++) {
+      for (let eachCol = 0; eachCol < COLS; eachCol++) {
+        const cellIndex = eachRow * COLS + eachCol;
+        const cell = gridInner.children[cellIndex];
+        gridState[eachRow][eachCol] = false;
+        cell.classList.remove("active");
+      }
+    }
+  });
+
+  randomiseButton.addEventListener("click", () => {
+    const probability = 0.2; // probability of the note being active
+    const gridState = gridRefs.gridState;
+    const gridInner = gridRefs.gridInner;
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const isActive = Math.random() < probability;
+        gridState[r][c] = isActive;
+        const cellIndex = r * COLS + c;
+        const cell = gridInner.children[cellIndex];
+        cell.classList.toggle("active", isActive);
+      }
+    }
+  });
 }
 
-main(); // Call the main function to run, when the script is loaded
+window.addEventListener("DOMContentLoaded", () => {
+  console.log("Welcome to Song Maker");
+  main();
+}); // Call the main function to run, when the script is loaded
