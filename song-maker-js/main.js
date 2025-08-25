@@ -9,15 +9,15 @@
  * - User interaction handling
  * - Data persistence via sessionStorage
  */
-import { DEFAULT_COLS, DEFAULT_NOTES, ALL_NOTES } from "./config.js";
-import { renderGrid } from "./grid.js";
+import { DEFAULT_COLS, DEFAULT_NOTES, ALL_NOTES } from "./js/config.js";
+import { renderGrid } from "./js/grid.js";
 import {
   ensureAudioContext,
   setVolume,
   playNote,
   highlightColumn,
-} from "./audio.js";
-import { setupControls, populateNoteSelectors } from "./ui.js";
+} from "./js/audio.js";
+import { setupControls, populateNoteSelectors } from "./js/ui.js";
 import {
   STORAGE_KEYS,
   ELEMENT_IDS,
@@ -25,7 +25,7 @@ import {
   AUDIO_CONFIG,
   MESSAGES,
   RANDOMIZE_CONFIG,
-} from "./constants.js";
+} from "./js/constants.js";
 import {
   saveToStorage,
   loadFromStorage,
@@ -36,7 +36,7 @@ import {
   isNonEmptyString,
   isNumberInRange,
   calculateNoteDuration,
-} from "./utilities.js";
+} from "./js/utilities.js";
 
 /**
  * Global application state object.
