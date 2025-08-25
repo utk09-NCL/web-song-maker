@@ -1,398 +1,439 @@
-const ROWS = parseInt(window.sessionStorage.getItem("songMaker_ROWS")) || 8; // total number of horizontal pitches (notes)
-const COLS = parseInt(window.sessionStorage.getItem("songMaker_COLS")) || 16; // total number of vertical time steps (beats)
-
-window.sessionStorage.setItem("songMaker_ROWS", ROWS);
-window.sessionStorage.setItem("songMaker_COLS", COLS);
-
 /**
- * Names for each row / note names.
- * Numbers 3 and 2 refer to octaves. It is arranged in the order of highest note first.
- * More info: {@link https://www.musicandtheory.com/an-easy-guide-to-scientific-pitch-notation/}
+ * Main controller for the Web Song Maker application.
+ * Manages application state, grid rendering, audio playback, and user interactions.
+ *
+ * This module serves as the central hub for:
+ * - Application state management
+ * - DOM initialization and event binding
+ * - Audio playback coordination
+ * - User interaction handling
+ * - Data persistence via sessionStorage
  */
-const NOTE_NAMES = JSON.parse(
-  window.sessionStorage.getItem("songMaker_NOTE_NAMES")
-) || ["C3", "B2", "A2", "G2", "F2", "E2", "D2", "C2"];
-
-window.sessionStorage.setItem(
-  "songMaker_NOTE_NAMES",
-  JSON.stringify(NOTE_NAMES)
-);
+import { DEFAULT_COLS, DEFAULT_NOTES, ALL_NOTES } from "./config.js";
+import { renderGrid } from "./grid.js";
+import {
+  ensureAudioContext,
+  setVolume,
+  playNote,
+  highlightColumn,
+} from "./audio.js";
+import { setupControls, populateNoteSelectors } from "./ui.js";
+import {
+  STORAGE_KEYS,
+  ELEMENT_IDS,
+  GRID_LIMITS,
+  AUDIO_CONFIG,
+  MESSAGES,
+  RANDOMIZE_CONFIG,
+} from "./constants.js";
+import {
+  saveToStorage,
+  loadFromStorage,
+  showNotification,
+  getRequiredElement,
+  isValidGridState,
+  isValidArray,
+  isNonEmptyString,
+  isNumberInRange,
+  calculateNoteDuration,
+} from "./utilities.js";
 
 /**
- * Create an HTML element with provided class and id
- * @param {string} tag - HTML tag name (e.g., 'div', 'span', 'button').
- * @param {string} cssClass - Class name(s) for the element.
- * @param {string} idAttr - ID for the element.
- * @returns {HTMLElement} The created HTML element.
- * @example
- * const myElement = el("span", "dummy-class", "dummy-id");
- * // It will create
- * <span class='dummy-class' id='dummy-id'></span>
+ * Global application state object.
+ * Centralizes all mutable state to prevent scattered variables and improve maintainability.
  */
-function el(tag, cssClass, idAttr) {
-  const htmlElement = document.createElement(tag);
-  if (cssClass) {
-    htmlElement.className = cssClass;
-  }
-  if (idAttr) {
-    htmlElement.id = idAttr;
-  }
-  return htmlElement;
-}
+let appState = {
+  /** Whether the sequencer is currently playing */
+  isPlaying: false,
+  /** Current column being played (0-indexed) */
+  currentColumn: 0,
+  /** Timer ID for the playback loop */
+  timerId: null,
+  /** Number of columns in the current grid */
+  cols: DEFAULT_COLS,
+  /** Array of musical notes currently displayed in the grid rows */
+  notes: [...DEFAULT_NOTES],
+  /** 2D boolean array representing which cells are active [row][col] */
+  gridState: null,
+  /** References to DOM elements for the rendered grid */
+  gridRefs: null,
+};
 
 /**
- * Render the interactive grid for the song maker.
- * @param {HTMLElement} container - The DOM element to render the grid into.
- */
-function renderGrid(container) {
-  // Outer grid layout container
-  const gridLayout = el("div", "grid-layout", "grid-layout-1");
-
-  // Left column: note labels
-  const labelsLeftSide = el("div", "labels-left-side", "labels-left-side-1");
-  const rulerSpacer = el("div", "ruler-spacer"); // Spacer for alignment
-  labelsLeftSide.appendChild(rulerSpacer);
-
-  // Container for note labels
-  const rowLabels = el("div", "row-labels");
-  rowLabels.style.gridTemplateRows = `repeat(${ROWS}, 32px)`; // Set rows dynamically
-
-  // Add note labels to the left side
-  NOTE_NAMES.forEach((noteName) => {
-    const rowLabel = el("div", "row-label");
-    rowLabel.textContent = noteName; // Set the text content to the note name
-    rowLabels.appendChild(rowLabel); // Append the label to the row labels container
-  });
-  labelsLeftSide.appendChild(rowLabels); // Add the row labels to the left side
-  gridLayout.appendChild(labelsLeftSide); // Add the left side to the grid layout
-
-  // Right column: ruler + clickable cells
-  const gridRightSide = el("div", "grid-right-side"); // Right side of the grid
-
-  // Ruler on top to show beat numbers
-  const ruler = el("div", "ruler"); // Ruler element
-  ruler.style.gridTemplateColumns = `repeat(${COLS}, 32px)`; // Set columns dynamically
-
-  // Add beat numbers to the ruler
-  for (let colIdx = 1; colIdx <= COLS; colIdx++) {
-    const isBeat = colIdx % 4 === 0; // Highlight every 4th beat. This is done by checking if the column index is divisible by 4.
-    const rulerCell = el("div", `ruler-cell${isBeat ? " beat" : ""}`); // Create a ruler cell with a class for beats
-    rulerCell.textContent = colIdx;
-    ruler.appendChild(rulerCell); // Append the ruler cell to the ruler
-  }
-  gridRightSide.appendChild(ruler); // Add the ruler to the right side of the grid
-
-  const gridInner = el("div", "grid-inner"); // Inner grid container
-  gridInner.style.gridTemplateColumns = `repeat(${COLS}, 32px)`; // Set columns dynamically
-
-  /**
-   * 2D array for storing active notes. 'false' means inactive.
-   * Each cell corresponds to a note at a specific time step.
-   * The gridState is initialized with 'false' for all cells.
-   * @type boolean[][]
-   * @example
-   * const gridState = [
-   *   [false, false, false, ...], // Row 0 (C3) with 16 columns (see ROWS and COLS constants)
-   *   [false, false, false, ...], // Row 1 (B2) with 16 columns
-   * ... // and so on for each row and column
-   * ];
-   */
-  const gridState = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
-
-  /**
-   * Update the visual state of a cell based on its active/inactive state.
-   * @param {HTMLElement} cell - The cell element to update.
-   * @param {number} row - Row index.
-   * @param {number} col - Column index.
-   */
-  function updateCellElement(cell, row, col) {
-    const isActive = gridState[row][col];
-    cell.classList.toggle("active", isActive); // Toggle the 'active' class based on the cell's state
-  }
-
-  /**
-   * Toggle the state of a cell and update its appearance.
-   * @param {number} rowNumber - Row index.
-   * @param {number} colNumber - Column index.
-   * @param {HTMLElement} cellElement - The cell element to update.
-   */
-  function toggleCellState(rowNumber, colNumber, cellElement) {
-    gridState[rowNumber][colNumber] = !gridState[rowNumber][colNumber]; // Toggle the state of the cell - true to active, false to inactive
-    updateCellElement(cellElement, rowNumber, colNumber); // Update the cell's appearance based on its new state by adding or removing the 'active' class
-  }
-
-  // Create grid cells and add click event listeners
-  for (let eachRow = 0; eachRow < ROWS; eachRow++) {
-    for (let eachCol = 0; eachCol < COLS; eachCol++) {
-      const cell = el("button", "cell");
-
-      /**
-       * Add click event listener to each cell.
-       * When clicked, it toggles the cell's state (false/true).
-       * Event Listeners: {@link https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener}
-       */
-      cell.addEventListener("click", () =>
-        toggleCellState(eachRow, eachCol, cell)
-      );
-
-      gridInner.appendChild(cell); // Append the cell to the inner grid
-    }
-  }
-
-  gridRightSide.appendChild(gridInner); // Add the inner grid to the right side of the grid
-  gridLayout.appendChild(gridRightSide); // Add the right side to the grid layout
-  container.appendChild(gridLayout); // Finally, append the entire grid layout to the container
-
-  /**
-   * @returns {{gridState: boolean[][], gridInner: HTMLElement, ruler: HTMLElement}}
-   * An object containing references to the grid's state and key DOM elements.
-   * This allows other parts of the application to interact with the grid.
-   */
-  return {
-    gridState, // The 2D array representing the active notes
-    gridInner, // The DOM element containing the grid cells
-    ruler, // The DOM element for the top ruler
-  };
-}
-
-/**
- * Main entry point: renders the grid into the #grid element.
+ * Main application entry point.
+ * Initializes the application by setting up DOM references, loading saved state,
+ * configuring event listeners, and rendering the initial interface.
+ *
+ * @throws {Error} If required DOM elements are not found
  */
 function main() {
-  const gridContainer = document.getElementById("grid");
-  if (!gridContainer) {
-    console.error("grid element missing");
-    return;
-  }
-  const gridRefs = renderGrid(gridContainer); // Build the grid UI
+  try {
+    // Get references to key DOM elements with validation
+    const gridContainer = getRequiredElement(ELEMENT_IDS.GRID_CONTAINER);
+    const playButton = getRequiredElement(ELEMENT_IDS.PLAY_BUTTON);
+    const tempoInput = getRequiredElement(ELEMENT_IDS.TEMPO_SLIDER);
+    const volumeInput = getRequiredElement(ELEMENT_IDS.VOLUME_SLIDER);
+    const waveSelect = getRequiredElement(ELEMENT_IDS.WAVE_SELECT);
 
-  // Access to Controls
-  const playButton = document.getElementById("play");
-  const tempoInput = document.getElementById("tempo");
-  const waveSelect = document.getElementById("waveSelect");
-  const clearButton = document.getElementById("clearBtn");
-  const randomiseButton = document.getElementById("randomBtn");
+    // Load saved state and render the initial grid
+    initializeGrid();
 
-  // Playback state management
-  let audioContext = null; // The AudioContext for playing sound
-  let isPlaying = false; // Flag to track playback state
-  let currentColumn = 0; // The currently playing column index
-  let timerId = null; // ID for the setTimeout loop
-  const baseFrequency = 65.41; // frequency of C2, the lowest note
-
-  /**
-   * Ensures that an AudioContext is created.
-   * An AudioContext is necessary for any web audio operations.
-   * It is created on-demand to support browsers that require user interaction first.
-   */
-  function ensureAudioContext() {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-  }
-
-  /**
-   * Calculate how long we will wait before moving to the next column, in milliseconds.
-   * @returns {number} The duration of each column in ms.
-   */
-  function getColumnDurationMs() {
-    const bpm = parseInt(tempoInput?.value) || 120; // Beats per minute from the tempo input
-    // 60,000 ms in a minute / bpm gives duration of one beat.
-    // We divide by 4 because we have 4 columns per beat (16th notes).
-    return 60_000 / bpm / 4;
-  }
-
-  /**
-   * Calculates the frequency for a given row index based on a major scale.
-   * @param {number} row - The row index (0 is the highest note).
-   * @returns {number} The frequency in Hz for the given note.
-   */
-  function getFrequencyForRow(row) {
-    // These are the steps in semitones from the base note for a C-Major scale from high to low.
-    const semitoneSteps = [12, 11, 9, 7, 5, 4, 2, 0]; // C3, B2, A2, G2, F2, E2, D2, C2
-    const step = semitoneSteps[row] || 0;
-    // Formula for calculating frequency from a base frequency and semitone steps.
-    return baseFrequency * Math.pow(2, step / 12);
-  }
-
-  /**
-   * Plays a single note at a specific time.
-   * @param {number} row - The row of the note to play.
-   * @param {number} time - The time (from audioContext.currentTime) to schedule the note play.
-   */
-  function playNoteAt(row, time) {
-    const frequency = getFrequencyForRow(row);
-    const oscillator = audioContext.createOscillator(); // Creates a sound source
-    const gainNode = audioContext.createGain(); // Controls the volume
-
-    const waveForm = waveSelect?.value || "sine"; // Get waveform from dropdown
-    oscillator.type = waveForm;
-
-    oscillator.frequency.value = frequency; // Set the note's pitch
-    gainNode.gain.value = 0.001; // Start with a very low volume
-    oscillator.connect(gainNode).connect(audioContext.destination); // Connect oscillator to gain, then to output
-
-    // Create a short volume envelope to make the note sound more natural.
-    gainNode.gain.setValueAtTime(0.001, time);
-    gainNode.gain.linearRampToValueAtTime(0.2, time + 0.01); // Quick attack
-    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.25); // Exponential decay
-
-    oscillator.start(time); // Play the note at the scheduled time
-    oscillator.stop(time + 0.3); // Stop it after 0.3 seconds
-  }
-
-  /**
-   * Toggles the visual highlight for a column of cells and its ruler cell.
-   * @param {number} col - The column index to highlight.
-   * @param {boolean} on - true to add the highlight, false to remove it.
-   */
-  function highlightColumn(col, on) {
-    const gridInner = gridRefs.gridInner;
-    const ruler = gridRefs.ruler;
-    if (!gridInner || !ruler) {
-      console.error("grid or ruler reference missing");
-      return;
-    }
-
-    // Highlight all cells in the column
-    for (let r = 0; r < ROWS; r++) {
-      const cellIndex = r * COLS + col;
-      const cell = gridInner.children[cellIndex];
-      if (cell) {
-        cell.classList.toggle("playing-col", on);
-      }
-    }
-
-    // Highlight the corresponding ruler cell
-    const rulerCell = ruler.children[col];
-    if (rulerCell) {
-      rulerCell.classList.toggle("playing-col", on);
-    }
-  }
-
-  /**
-   * The main playback loop function, called for each time step (column).
-   */
-  function playbackStep() {
-    if (!isPlaying || !audioContext) return; // Stop if playback is paused or audio is not ready
-    const now = audioContext.currentTime; // Get the precise current time from the audio engine
-
-    const gridState = gridRefs.gridState;
-
-    // Play all active notes in the current column
-    for (let r = 0; r < ROWS; r++) {
-      if (gridState[r][currentColumn]) {
-        playNoteAt(r, now);
-      }
-    }
-
-    // Highlight the current column and un-highlight the previous one
-    highlightColumn(currentColumn, true);
-    const prevColumn = (currentColumn - 1 + COLS) % COLS; // Wrap around for the first column
-    highlightColumn(prevColumn, false);
-
-    currentColumn = (currentColumn + 1) % COLS; // Move to the next column, looping back to 0 at the end
-    timerId = setTimeout(playbackStep, getColumnDurationMs()); // Schedule the next step
-  }
-
-  /**
-   * Disables or enables control buttons during playback.
-   * @param {boolean} disabled - true to disable, false to enable.
-   */
-  function setControlsDisabled(disabled) {
-    [clearButton, randomiseButton].forEach((eachEl) => {
-      if (eachEl) {
-        eachEl.disabled = disabled;
+    // Wire up core playback controls with error handling
+    playButton.addEventListener("click", togglePlayback);
+    volumeInput.addEventListener("input", (e) => {
+      try {
+        const volume = parseFloat(e.target.value);
+        setVolume(volume);
+      } catch (error) {
+        console.error("Failed to set volume:", error);
+        showNotification("Failed to update volume", "error");
       }
     });
-  }
 
-  /**
-   * Starts the song playback.
-   */
-  function startPlayback() {
-    ensureAudioContext(); // Make sure AudioContext is ready
-    // In some browsers, audio context starts suspended and must be resumed by user action.
-    if (audioContext.state === "suspended") {
-      audioContext.resume();
-    }
-    if (isPlaying) return; // Do nothing if already playing
+    // Initialize note selectors with all available notes
+    populateNoteSelectors(ALL_NOTES);
 
-    isPlaying = true;
-    playButton.textContent = "Stop";
-    setControlsDisabled(true); // Disable clear & randomise buttons during playback
-    currentColumn = 0; // Start from the beginning
-    playbackStep(); // Start the playback loop
-  }
+    // Initialize all UI controls with callback functions
+    setupControls({
+      onClear: clearGrid,
+      onRandomize: randomizeGrid,
+      onGridChange: updateGridConfiguration,
+    });
 
-  /**
-   * Stops the song playback.
-   */
-  function stopPlayback() {
-    if (!isPlaying) return; // Do nothing if not playing
+    /**
+     * Initializes the grid by loading saved configuration from sessionStorage
+     * and rendering the grid with the appropriate state.
+     * Handles loading errors gracefully and validates loaded data.
+     */
+    function initializeGrid() {
+      try {
+        // Load saved grid dimensions with validation
+        const savedCols = loadFromStorage(
+          STORAGE_KEYS.COLUMNS,
+          DEFAULT_COLS,
+          (value) =>
+            isNumberInRange(
+              value,
+              GRID_LIMITS.MIN_COLUMNS,
+              GRID_LIMITS.MAX_COLUMNS
+            )
+        );
+        appState.cols = savedCols;
 
-    isPlaying = false;
-    playButton.textContent = "Play";
-    clearTimeout(timerId); // Stop the setTimeout loop
-    // Remove all column highlights
-    for (let c = 0; c < COLS; c++) {
-      highlightColumn(c, false);
-    }
-    setControlsDisabled(false); // Re-enable controls
-  }
+        // Load saved notes with validation
+        const savedNotes = loadFromStorage(
+          STORAGE_KEYS.NOTE_NAMES,
+          [...DEFAULT_NOTES],
+          (value) => isValidArray(value, isNonEmptyString)
+        );
+        appState.notes = savedNotes;
 
-  // Add a click event listener to the play/stop button
-  playButton.addEventListener("click", () => {
-    if (isPlaying) {
-      stopPlayback();
-    } else {
-      startPlayback();
-    }
-  });
+        // Load saved cell states with validation
+        const savedState = loadFromStorage(
+          STORAGE_KEYS.GRID_STATE,
+          null,
+          (value) =>
+            isValidGridState(value, appState.notes.length, appState.cols)
+        );
+        appState.gridState = savedState || createEmptyGrid();
 
-  // Add a change event listener to the tempo input to adjust speed live
-  tempoInput.addEventListener("change", () => {
-    if (isPlaying) {
-      clearTimeout(timerId); // Stop the current loop
-      playbackStep(); // Start a new one with the updated tempo
-    }
-  });
+        // Render the grid DOM elements and store references for later manipulation
+        appState.gridRefs = renderGrid(
+          gridContainer,
+          appState.notes,
+          appState.cols,
+          appState.gridState
+        );
+      } catch (error) {
+        console.error("Failed to initialize grid:", error);
+        showNotification(MESSAGES.STORAGE_LOAD_ERROR, "error");
 
-  // Add a click event listener to the clear button
-  clearButton.addEventListener("click", () => {
-    const gridState = gridRefs.gridState;
-    const gridInner = gridRefs.gridInner;
-
-    for (let eachRow = 0; eachRow < ROWS; eachRow++) {
-      for (let eachCol = 0; eachCol < COLS; eachCol++) {
-        const cellIndex = eachRow * COLS + eachCol;
-        const cell = gridInner.children[cellIndex];
-        gridState[eachRow][eachCol] = false; // Set state to inactive
-        cell.classList.remove("active"); // Remove css active state
+        // Fallback to defaults
+        appState.cols = DEFAULT_COLS;
+        appState.notes = [...DEFAULT_NOTES];
+        appState.gridState = createEmptyGrid();
+        appState.gridRefs = renderGrid(
+          gridContainer,
+          appState.notes,
+          appState.cols,
+          appState.gridState
+        );
       }
     }
-  });
 
-  // Add a click event listener to the randomise button
-  randomiseButton.addEventListener("click", () => {
-    const probability = 0.2; // 20% chance for a note to be active
-    const gridState = gridRefs.gridState;
-    const gridInner = gridRefs.gridInner;
+    /**
+     * Creates a 2D boolean array filled with false values.
+     * Dimensions are based on current notes (rows) and columns.
+     * @returns {boolean[][]} Empty grid state where all cells are inactive
+     */
+    function createEmptyGrid() {
+      return Array.from({ length: appState.notes.length }, () =>
+        Array(appState.cols).fill(false)
+      );
+    }
 
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const isActive = Math.random() < probability; // Decide if the cell should be active
-        gridState[r][c] = isActive;
-        const cellIndex = r * COLS + c;
-        const cell = gridInner.children[cellIndex];
-        cell.classList.toggle("active", isActive); // Update css class
+    /**
+     * Persists current application state to browser's sessionStorage.
+     * Saves grid cell states, column count, and note configuration.
+     * Provides user feedback on save success/failure.
+     */
+    function saveState() {
+      const saveOperations = [
+        () => saveToStorage(STORAGE_KEYS.GRID_STATE, appState.gridState),
+        () => saveToStorage(STORAGE_KEYS.COLUMNS, appState.cols),
+        () => saveToStorage(STORAGE_KEYS.NOTE_NAMES, appState.notes),
+      ];
+
+      const allSuccessful = saveOperations.every((operation) => operation());
+
+      if (!allSuccessful) {
+        console.warn("Some state data failed to save");
       }
     }
-  });
+
+    /**
+     * Clears all active cells in the grid and saves the state.
+     * Provides user feedback upon completion.
+     */
+    function clearGrid() {
+      try {
+        appState.gridState = createEmptyGrid();
+        saveState();
+        refreshGrid();
+        showNotification("Grid cleared successfully", "success");
+      } catch (error) {
+        console.error("Failed to clear grid:", error);
+        showNotification("Failed to clear grid", "error");
+      }
+    }
+
+    /**
+     * Randomly activates cells in the grid with a configured probability.
+     * Creates interesting musical patterns while maintaining usability.
+     */
+    function randomizeGrid() {
+      try {
+        // First clear the grid
+        appState.gridState = createEmptyGrid();
+
+        // Then randomly activate cells based on configuration
+        for (let row = 0; row < appState.notes.length; row++) {
+          for (let col = 0; col < appState.cols; col++) {
+            if (Math.random() < RANDOMIZE_CONFIG.CELL_ACTIVATION_PROBABILITY) {
+              appState.gridState[row][col] = true;
+            }
+          }
+        }
+
+        saveState();
+        refreshGrid();
+        showNotification("Grid randomized successfully", "success");
+      } catch (error) {
+        console.error("Failed to randomize grid:", error);
+        showNotification("Failed to randomize grid", "error");
+      }
+    }
+
+    function refreshGrid() {
+      gridContainer.innerHTML = "";
+      appState.gridRefs = renderGrid(
+        gridContainer,
+        appState.notes,
+        appState.cols,
+        appState.gridState
+      );
+    }
+
+    /**
+     * Updates the grid configuration with new note range and column count.
+     * @param {string} startNote - Starting (lowest) note of the range
+     * @param {string} endNote - Ending (highest) note of the range
+     * @param {number} newColumns - Number of columns in the new grid
+     */
+    function updateGridConfiguration(startNote, endNote, newColumns) {
+      if (appState.isPlaying) {
+        stopPlayback();
+      }
+
+      // Validate notes
+      const startIndex = ALL_NOTES.indexOf(startNote);
+      const endIndex = ALL_NOTES.indexOf(endNote);
+
+      if (startIndex === -1 || endIndex === -1) {
+        showNotification(MESSAGES.INVALID_NOTES, "error");
+        return;
+      }
+
+      // Since ALL_NOTES is ordered from high to low, startIndex should be >= endIndex
+      // for a valid range from low to high notes
+      if (startIndex < endIndex) {
+        showNotification(MESSAGES.INVALID_NOTE_RANGE, "error");
+        return;
+      }
+
+      // Validate columns using utility function
+      if (
+        !isNumberInRange(
+          newColumns,
+          GRID_LIMITS.MIN_COLUMNS,
+          GRID_LIMITS.MAX_COLUMNS
+        )
+      ) {
+        showNotification(MESSAGES.INVALID_COLUMNS, "error");
+        return;
+      }
+
+      // Update state - slice from endIndex to startIndex+1 since array is high-to-low
+      appState.notes = ALL_NOTES.slice(endIndex, startIndex + 1).reverse();
+      appState.cols = newColumns;
+      appState.gridState = createEmptyGrid();
+
+      // Save and refresh
+      saveState();
+      refreshGrid();
+
+      // Re-setup controls for the new grid
+      setupControls({
+        onClear: clearGrid,
+        onRandomize: randomizeGrid,
+        onGridChange: updateGridConfiguration,
+      });
+
+      // Provide success feedback
+      showNotification(MESSAGES.GRID_UPDATED, "success");
+    }
+
+    /**
+     * Calculates the duration of each grid column based on current tempo.
+     * Uses 16th note subdivision for musical timing.
+     *
+     * @returns {number} Column duration in milliseconds
+     */
+    function getColumnDurationMs() {
+      const bpm = parseInt(tempoInput.value);
+      return calculateNoteDuration(bpm, AUDIO_CONFIG.NOTE_SUBDIVISION);
+    }
+
+    /**
+     * Playback step function called at each column interval.
+     * Plays active notes in the current column, updates visual highlights,
+     * and schedules the next step.
+     * @returns {void}
+     */
+    function playbackStep() {
+      if (!appState.isPlaying) return;
+
+      const now = ensureAudioContext().currentTime;
+      const waveForm = waveSelect.value;
+
+      // Play active notes in current column
+      for (let row = 0; row < appState.notes.length; row++) {
+        if (appState.gridState[row][appState.currentColumn]) {
+          playNote(appState.notes[row], now, waveForm);
+        }
+      }
+
+      // Update visual highlights
+      const prevColumn =
+        (appState.currentColumn - 1 + appState.cols) % appState.cols;
+      highlightColumn(
+        prevColumn,
+        false,
+        appState.gridRefs.gridInner,
+        appState.gridRefs.ruler
+      );
+      highlightColumn(
+        appState.currentColumn,
+        true,
+        appState.gridRefs.gridInner,
+        appState.gridRefs.ruler
+      );
+
+      // Move to next column
+      appState.currentColumn = (appState.currentColumn + 1) % appState.cols;
+      appState.timerId = setTimeout(playbackStep, getColumnDurationMs());
+    }
+
+    /**
+     * Starts the playback loop if not already playing.
+     * Initializes playback state and begins the timed sequence.
+     * @returns {void}
+     */
+    function startPlayback() {
+      if (appState.isPlaying) return;
+      appState.isPlaying = true;
+      ensureAudioContext();
+      playButton.textContent = "Stop";
+      appState.currentColumn = 0;
+      playbackStep();
+    }
+
+    /**
+     * Stops the playback loop if currently playing.
+     * Clears playback state and visual highlights.
+     * @returns {void}
+     */
+    function stopPlayback() {
+      if (!appState.isPlaying) return;
+      appState.isPlaying = false;
+      clearTimeout(appState.timerId);
+      playButton.textContent = "Play";
+
+      // Clear all highlights
+      for (let c = 0; c < appState.cols; c++) {
+        highlightColumn(
+          c,
+          false,
+          appState.gridRefs.gridInner,
+          appState.gridRefs.ruler
+        );
+      }
+    }
+
+    /**
+     * Toggles playback state between playing and stopped.
+     * @returns {void}
+     */
+    function togglePlayback() {
+      if (appState.isPlaying) {
+        stopPlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    /**
+     * Event handler for grid cell state changes.
+     * Updates the application state and persists changes.
+     *
+     * @param {number} row - Row index of the changed cell
+     * @param {number} col - Column index of the changed cell
+     * @param {boolean} active - New active state of the cell
+     */
+    function handleCellStateChange(row, col, active) {
+      if (
+        row >= 0 &&
+        row < appState.notes.length &&
+        col >= 0 &&
+        col < appState.cols
+      ) {
+        appState.gridState[row][col] = active;
+        saveState();
+      } else {
+        console.warn(`Invalid cell coordinates: row=${row}, col=${col}`);
+      }
+    }
+
+    // Expose state update function for grid cells (temporary - will be removed in Phase 2)
+    window.updateCellState = handleCellStateChange;
+  } catch (error) {
+    console.error("Failed to initialize application:", error);
+    showNotification(
+      "Application failed to start. Please refresh the page.",
+      "error"
+    );
+  }
 }
 
-// When the initial HTML document has been completely loaded and parsed, run the main function.
-window.addEventListener("DOMContentLoaded", () => {
-  console.log("Welcome to Song Maker");
-  main();
-});
+// Start the app
+window.addEventListener("DOMContentLoaded", main);

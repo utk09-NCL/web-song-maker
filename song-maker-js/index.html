@@ -3,63 +3,98 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
-    <link rel="apple-touch-icon" sizes="180x180" href="./logo/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="./logo/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="./logo/favicon-16x16.png" />
-    <link rel="manifest" href="./logo/site.webmanifest" />
-
-    <title>Song Maker (JS)</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Web Song Maker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="logo/apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="logo/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="logo/favicon-16x16.png"
+    />
+    <link rel="manifest" href="logo/site.webmanifest" />
   </head>
+
   <body>
-    <main id="app">
-      <!-- Header -->
-      <header class="app-header">
-        <h1 class="title">Song Maker (JS)</h1>
-      </header>
-      <!-- Section 1 -->
-      <section id="controls" aria-label="Controls">
-        <button id="play" class="btn">Play</button>
-        <label for="tempo">Tempo</label>
-        <input
-          id="tempo"
-          class="tempo-input"
-          name="tempo"
-          aria-label="Tempo (bpm)"
-          type="number"
-          min="40"
-          max="240"
-          value="120"
-        />
+    <header>
+      <h1>Web Song Maker</h1>
+    </header>
 
-        <span class="divider">|</span>
-
-        <label for="waveSelect">Sound</label>
-        <select name="waveSelect" id="waveSelect" class="wave-select">
-          <option value="sine">Sine</option>
-          <option value="square">Square</option>
-          <option value="triangle">Triangle</option>
-          <option value="sawtooth">Saw</option>
-        </select>
-
-        <span class="divider">|</span>
-
-        <button id="clearBtn" class="btn">Clear</button>
-        <button id="randomBtn" class="btn">Randomise</button>
+    <main>
+      <section class="controls-container">
+        <div class="playback-controls">
+          <button id="play" class="control-button">Play</button>
+          <div class="control-group">
+            <label for="tempo">Tempo</label>
+            <input type="range" id="tempo" min="60" max="240" value="120" />
+            <span class="value-display" id="tempoValue">120</span>
+          </div>
+          <div class="control-group">
+            <label for="waveSelect">Wave</label>
+            <select id="waveSelect" class="control-select">
+              <option value="sine">Sine</option>
+              <option value="square">Square</option>
+              <option value="sawtooth">Sawtooth</option>
+              <option value="triangle">Triangle</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="volume">Volume</label>
+            <input
+              type="range"
+              id="volume"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.5"
+            />
+            <span class="value-display" id="volumeValue">50%</span>
+          </div>
+        </div>
+        <div class="grid-controls">
+          <button id="clearBtn" class="control-button">Clear</button>
+          <button id="randomBtn" class="control-button">Randomise</button>
+        </div>
       </section>
-      <!-- Section 2 -->
-      <section
-        id="grid"
-        class="grid"
-        role="grid"
-        aria-label="Notes grid"
-      ></section>
+
+      <!-- Grid configuration controls -->
+      <section class="controls-container grid-config">
+        <div class="config-group">
+          <label for="columnsInput">Columns:</label>
+          <input type="number" id="columnsInput" min="4" max="32" value="16" />
+        </div>
+        <div class="note-range-selector">
+          <div class="config-group">
+            <label for="startNote">Start Note (low):</label>
+            <select id="startNote" class="control-select"></select>
+          </div>
+          <div class="config-group">
+            <label for="endNote">End Note (high):</label>
+            <select id="endNote" class="control-select"></select>
+          </div>
+        </div>
+        <div class="config-group">
+          <button id="applyGridBtn" class="control-button">
+            Apply Grid Changes
+          </button>
+        </div>
+      </section>
+
+      <section id="grid" class="grid-container">
+        <!-- The grid will be rendered here by JavaScript -->
+      </section>
     </main>
 
-    <noscript
-      >Please enable Javascript to use this Song Maker project.</noscript
-    >
-    <script src="./main.js"></script>
+    <script src="main.js" type="module"></script>
   </body>
 </html>
