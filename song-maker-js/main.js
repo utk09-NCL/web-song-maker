@@ -100,6 +100,9 @@ function main() {
       onGridChange: updateGridConfiguration,
     });
 
+    // Set up keyboard shortcuts
+    setupKeyboardShortcuts();
+
     /**
      * Initializes the grid by loading saved configuration from sessionStorage
      * and rendering the grid with the appropriate state.
@@ -144,6 +147,9 @@ function main() {
           appState.cols,
           appState.gridState
         );
+
+        // Set up event listener for cell state changes
+        setupGridEventListeners(gridContainer);
       } catch (error) {
         console.error("Failed to initialize grid:", error);
         showNotification(MESSAGES.STORAGE_LOAD_ERROR, "error");
@@ -158,6 +164,9 @@ function main() {
           appState.cols,
           appState.gridState
         );
+
+        // Set up event listener for cell state changes
+        setupGridEventListeners(gridContainer);
       }
     }
 
@@ -242,6 +251,84 @@ function main() {
         appState.cols,
         appState.gridState
       );
+
+      // Re-setup event listeners after grid refresh
+      setupGridEventListeners(gridContainer);
+    }
+
+    /**
+     * Sets up event listeners for grid cell interactions.
+     * Listens for custom cellStateChange events and updates application state.
+     *
+     * @param {HTMLElement} container - Grid container element
+     */
+    function setupGridEventListeners(container) {
+      // Remove existing listener if present
+      container.removeEventListener("cellStateChange", handleCellStateChange);
+
+      // Add event listener for cell state changes
+      container.addEventListener("cellStateChange", handleCellStateChange);
+    }
+
+    /**
+     * Sets up keyboard shortcuts for improved user experience.
+     * Handles global keyboard events with proper focus management.
+     */
+    function setupKeyboardShortcuts() {
+      document.addEventListener("keydown", (event) => {
+        // Don't trigger shortcuts when typing in input fields
+        if (event.target.matches("input, select, textarea")) {
+          return;
+        }
+
+        // Don't trigger shortcuts when help overlay is open (except Escape)
+        const helpOverlay = document.getElementById("helpOverlay");
+        const isHelpOpen = helpOverlay && !helpOverlay.hasAttribute("hidden");
+        if (isHelpOpen && event.key !== "Escape") {
+          return;
+        }
+
+        try {
+          switch (event.key.toLowerCase()) {
+            case " ": // Space bar - Play/Stop
+              event.preventDefault();
+              togglePlayback();
+              break;
+
+            case "c": // C - Clear grid
+              event.preventDefault();
+              clearGrid();
+              break;
+
+            case "r": // R - Randomize grid
+              event.preventDefault();
+              randomizeGrid();
+              break;
+
+            case "?": // ? - Toggle help
+            case "/": // Also handle / key for help
+              if (event.shiftKey || event.key === "?") {
+                event.preventDefault();
+                if (window.toggleHelp) {
+                  window.toggleHelp();
+                }
+              }
+              break;
+
+            case "escape": // Escape - Close help or stop playback
+              event.preventDefault();
+              if (isHelpOpen && window.toggleHelp) {
+                window.toggleHelp();
+              } else if (appState.isPlaying) {
+                stopPlayback();
+              }
+              break;
+          }
+        } catch (error) {
+          console.error("Keyboard shortcut failed:", error);
+          showNotification("Keyboard shortcut failed", "error");
+        }
+      });
     }
 
     /**
@@ -406,26 +493,28 @@ function main() {
      * Event handler for grid cell state changes.
      * Updates the application state and persists changes.
      *
-     * @param {number} row - Row index of the changed cell
-     * @param {number} col - Column index of the changed cell
-     * @param {boolean} active - New active state of the cell
+     * @param {CustomEvent} event - Custom event containing cell change details
      */
-    function handleCellStateChange(row, col, active) {
-      if (
-        row >= 0 &&
-        row < appState.notes.length &&
-        col >= 0 &&
-        col < appState.cols
-      ) {
-        appState.gridState[row][col] = active;
-        saveState();
-      } else {
-        console.warn(`Invalid cell coordinates: row=${row}, col=${col}`);
+    function handleCellStateChange(event) {
+      try {
+        const { row, col, isActive } = event.detail;
+
+        if (
+          row >= 0 &&
+          row < appState.notes.length &&
+          col >= 0 &&
+          col < appState.cols
+        ) {
+          appState.gridState[row][col] = isActive;
+          saveState();
+        } else {
+          console.warn(`Invalid cell coordinates: row=${row}, col=${col}`);
+        }
+      } catch (error) {
+        console.error("Failed to handle cell state change:", error);
+        showNotification("Failed to update cell state", "error");
       }
     }
-
-    // Expose state update function for grid cells (temporary - will be removed in Phase 2)
-    window.updateCellState = handleCellStateChange;
   } catch (error) {
     console.error("Failed to initialize application:", error);
     showNotification(

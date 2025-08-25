@@ -17,6 +17,7 @@ import {
   isNumberInRange,
   isNonEmptyString,
   formatAsPercentage,
+  debounce,
 } from "./utilities.js";
 
 /**
@@ -60,6 +61,9 @@ export function setupControls(callbacks) {
 
     // Initialize grid configuration controls
     setupGridControls(onGridChange);
+
+    // Initialize help system
+    setupHelpSystem();
   } catch (error) {
     console.error("Failed to setup UI controls:", error);
     showNotification("Failed to initialize controls", "error");
@@ -106,7 +110,7 @@ function setupSliderDisplays() {
 
 /**
  * Sets up the grid configuration controls for columns and note range.
- * Handles validation and triggers grid reconfiguration when the apply button is clicked.
+ * Auto-applies changes when user modifies any grid setting with debouncing.
  * Provides comprehensive input validation with user-friendly error messages.
  *
  * @param {Function} onGridChange - Callback function to handle grid changes
@@ -118,12 +122,11 @@ function setupSliderDisplays() {
 function setupGridControls(onGridChange) {
   try {
     const colSelector = getRequiredElement(ELEMENT_IDS.COLUMNS_INPUT);
-    const applyBtn = getRequiredElement(ELEMENT_IDS.APPLY_GRID_BUTTON);
     const startNoteSelect = getRequiredElement(ELEMENT_IDS.START_NOTE_SELECT);
     const endNoteSelect = getRequiredElement(ELEMENT_IDS.END_NOTE_SELECT);
 
-    // Handle apply button clicks to change grid configuration
-    applyBtn.addEventListener("click", () => {
+    // Create debounced grid update function to prevent excessive updates
+    const debouncedGridUpdate = debounce(() => {
       try {
         const selectedCols = parseInt(colSelector.value);
         const startNote = startNoteSelect.value;
@@ -152,7 +155,12 @@ function setupGridControls(onGridChange) {
         console.error("Grid configuration update failed:", error);
         showNotification("Failed to update grid configuration", "error");
       }
-    });
+    }, 500);
+
+    // Auto-apply changes when any grid setting is modified
+    colSelector.addEventListener("input", debouncedGridUpdate);
+    startNoteSelect.addEventListener("change", debouncedGridUpdate);
+    endNoteSelect.addEventListener("change", debouncedGridUpdate);
   } catch (error) {
     console.error("Failed to setup grid controls:", error);
     showNotification("Failed to initialize grid controls", "error");
@@ -220,6 +228,61 @@ export function populateNoteSelectors(allNotes) {
   } catch (error) {
     console.error("Failed to populate note selectors:", error);
     showNotification("Failed to initialize note selectors", "error");
+    throw error;
+  }
+}
+
+/**
+ * Sets up the help overlay system with show/hide functionality.
+ * Handles help button clicks and overlay interactions.
+ * @throws {Error} If required help elements are not found
+ */
+function setupHelpSystem() {
+  try {
+    const helpBtn = getRequiredElement(ELEMENT_IDS.HELP_BUTTON);
+    const helpOverlay = getRequiredElement(ELEMENT_IDS.HELP_OVERLAY);
+    const closeHelpBtn = getRequiredElement(ELEMENT_IDS.CLOSE_HELP_BUTTON);
+
+    // Show help overlay
+    const showHelp = () => {
+      helpOverlay.removeAttribute("hidden");
+      helpOverlay.focus();
+    };
+
+    // Hide help overlay
+    const hideHelp = () => {
+      helpOverlay.setAttribute("hidden", "");
+    };
+
+    // Event listeners
+    helpBtn.addEventListener("click", showHelp);
+    closeHelpBtn.addEventListener("click", hideHelp);
+
+    // Close help when clicking outside content
+    helpOverlay.addEventListener("click", (e) => {
+      if (e.target === helpOverlay) {
+        hideHelp();
+      }
+    });
+
+    // Close help with Escape key
+    helpOverlay.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        hideHelp();
+      }
+    });
+
+    // Export for keyboard shortcut use
+    window.toggleHelp = () => {
+      if (helpOverlay.hasAttribute("hidden")) {
+        showHelp();
+      } else {
+        hideHelp();
+      }
+    };
+  } catch (error) {
+    console.error("Failed to setup help system:", error);
+    showNotification("Failed to initialize help system", "error");
     throw error;
   }
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <title>Web Song Maker</title>
 
     <!-- Seline Tracking -->
@@ -35,8 +35,16 @@
   </head>
 
   <body>
-    <header>
-      <h1>Web Song Maker</h1>
+    <header class="app-header">
+      <div class="header-content">
+        <h1 class="app-title">🎵 Web Song Maker</h1>
+        <p class="app-subtitle">
+          Create music with a simple grid-based sequencer
+        </p>
+        <button id="helpBtn" class="help-button" aria-label="Show help">
+          <span class="help-icon">?</span>
+        </button>
+      </div>
     </header>
 
     <main>
@@ -92,17 +100,66 @@
             <select id="endNote" class="control-select"></select>
           </div>
         </div>
-        <div class="config-group">
-          <button id="applyGridBtn" class="control-button">
-            Apply Grid Changes
-          </button>
-        </div>
       </section>
 
       <section id="grid" class="grid-container">
         <!-- The grid will be rendered here by JavaScript -->
       </section>
     </main>
+
+    <!-- Help Overlay -->
+    <div id="helpOverlay" class="help-overlay" hidden>
+      <div class="help-content">
+        <div class="help-header">
+          <h2>🎵 How to Use Web Song Maker</h2>
+          <button
+            id="closeHelpBtn"
+            class="close-help-btn"
+            aria-label="Close help"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="help-body">
+          <div class="help-section">
+            <h3>🎹 Creating Music</h3>
+            <p>
+              Click grid cells to create notes. Each row represents a musical
+              note, each column represents a beat in time.
+            </p>
+          </div>
+          <div class="help-section">
+            <h3>⚡ Controls</h3>
+            <ul>
+              <li><strong>Play/Stop:</strong> Start or stop playback</li>
+              <li>
+                <strong>Tempo:</strong> Adjust playback speed (60-240 BPM)
+              </li>
+              <li><strong>Volume:</strong> Control master volume</li>
+              <li><strong>Wave:</strong> Choose sound waveform</li>
+              <li><strong>Clear:</strong> Remove all notes</li>
+              <li><strong>Randomize:</strong> Generate random pattern</li>
+            </ul>
+          </div>
+          <div class="help-section">
+            <h3>⚙️ Grid Settings</h3>
+            <p>
+              Adjust columns (4-32) and note range. Changes apply automatically
+              as you modify settings.
+            </p>
+          </div>
+          <div class="help-section">
+            <h3>⌨️ Keyboard Shortcuts</h3>
+            <ul>
+              <li><strong>Space:</strong> Play/Stop</li>
+              <li><strong>C:</strong> Clear grid</li>
+              <li><strong>R:</strong> Randomize</li>
+              <li><strong>?:</strong> Show/hide this help</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="main.js" type="module"></script>
   </body>

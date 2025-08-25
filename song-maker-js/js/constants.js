@@ -36,7 +36,7 @@ export const GRID_LIMITS = {
   MAX_COLUMNS: 32,
   /** Default number of columns */
   DEFAULT_COLUMNS: 16,
-  /** Grid cell size in pixels */
+  /** Grid cell size in pixels - responsive sizing handled via CSS */
   CELL_SIZE: 32,
 };
 
@@ -103,7 +103,11 @@ export const ELEMENT_IDS = {
   COLUMNS_INPUT: "columnsInput",
   START_NOTE_SELECT: "startNote",
   END_NOTE_SELECT: "endNote",
-  APPLY_GRID_BUTTON: "applyGridBtn",
+
+  // Help system
+  HELP_BUTTON: "helpBtn",
+  HELP_OVERLAY: "helpOverlay",
+  CLOSE_HELP_BUTTON: "closeHelpBtn",
 
   // Notification system
   NOTIFICATION_CONTAINER: "notificationContainer",

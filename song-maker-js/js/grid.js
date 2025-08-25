@@ -127,10 +127,12 @@ export function renderGrid(container, notes, cols, gridState) {
             cell.classList.toggle(CSS_CLASSES.CELL_ACTIVE, isActive);
             cell.setAttribute("aria-pressed", isActive.toString());
 
-            // Update state through global function (temporary)
-            if (window.updateCellState) {
-              window.updateCellState(row, col, isActive);
-            }
+            // Dispatch custom event for cell state change
+            const cellChangeEvent = new CustomEvent("cellStateChange", {
+              detail: { row, col, isActive },
+              bubbles: true,
+            });
+            cell.dispatchEvent(cellChangeEvent);
           } catch (error) {
             console.error("Failed to handle cell click:", error);
             showNotification("Failed to update cell", "error");
